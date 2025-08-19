@@ -1,17 +1,43 @@
 import requests
 import spacy
+import logging
+
 # Use a lighter model like `en_core_web_sm` for faster processing
-nlp = spacy.load("en_core_web_sm")
+try:
+    nlp = spacy.load("en_core_web_sm")
+except OSError:
+    logging.warning("spaCy model 'en_core_web_sm' not found. Downloading...")
+    from spacy.cli import download
+    download("en_core_web_sm")
+    nlp = spacy.load("en_core_web_sm")
+
+# --- Mock Data for Demonstration ---
+MOCK_NEWS_HEADLINES = {
+    'AAPL': [
+        "Apple announces record-breaking iPhone sales for Q4.",
+        "Apple faces new antitrust lawsuit in Europe.",
+        "Tim Cook hints at new AI features at WWDC.",
+        "Analyst warns of slowing growth in China for Apple.",
+    ],
+    'MSFT': [
+        "Microsoft acquires major gaming studio for $20B.",
+        "Microsoft to lay off 1,000 employees in restructuring plan.",
+        "New Azure cloud services announced at Ignite conference.",
+    ],
+    'GOOG': [
+        "Google's parent company Alphabet posts strong quarterly earnings.",
+        "Google invests $500M in new data centers.",
+        "Regulatory scrutiny over Google's ad business intensifies.",
+    ],
+}
 
 def fetch_news_headlines(company_name):
-    """Fetches real-time news headlines for a company."""
-    # This is a placeholder; you'd use a real news API here.
-    # e.g., using NewsAPI or a similar free source.
-    api_url = f"https://api.news.com/v1/articles?q={company_name}"
-    response = requests.get(api_url)
-    if response.status_code == 200:
-        return [article['title'] for article in response.json()['articles']]
-    return []
+    """
+    Mocks fetching real-time news headlines for a company.
+    In a real-world scenario, you'd use a real news API here.
+    """
+    logging.info(f"Mocking fetch for unstructured data for {company_name}...")
+    return MOCK_NEWS_HEADLINES.get(company_name, [])
 
 def process_headlines(headlines):
     """Extracts entities and sentiment from news headlines."""
@@ -20,12 +46,11 @@ def process_headlines(headlines):
         doc = nlp(title)
 
         # Simple rule-based event classification
-        if any(word in title.lower() for word in ['debt', 'default', 'restructuring']):
-            sentiment = 'negative'
-        elif any(word in title.lower() for word in ['acquisition', 'profit', 'expansion']):
+        sentiment = 'neutral'
+        if any(word in title.lower() for word in ['acquisition', 'invests', 'expansion', 'record-breaking', 'strong']):
             sentiment = 'positive'
-        else:
-            sentiment = 'neutral'
+        elif any(word in title.lower() for word in ['lawsuit', 'lay off', 'restructuring', 'warns', 'slowing', 'regulatory scrutiny']):
+            sentiment = 'negative'
 
         # Extract company entities
         entities = [ent.text for ent in doc.ents if ent.label_ in ['ORG', 'GPE']]

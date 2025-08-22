@@ -1,63 +1,68 @@
 import requests
 import spacy
 import logging
+import os
+from dotenv import load_dotenv
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
-# Use a lighter model like `en_core_web_sm` for faster processing
+load_dotenv()
+
+NEWS_API_KEY = os.getenv("NEWS_API_KEY")
+
+# Initialize VADER sentiment analyzer
+analyzer = SentimentIntensityAnalyzer()
+
 try:
     nlp = spacy.load("en_core_web_sm")
 except OSError:
     logging.warning("spaCy model 'en_core_web_sm' not found. Downloading...")
     from spacy.cli import download
+
     download("en_core_web_sm")
     nlp = spacy.load("en_core_web_sm")
 
-# --- Mock Data for Demonstration ---
-MOCK_NEWS_HEADLINES = {
-    'AAPL': [
-        "Apple announces record-breaking iPhone sales for Q4.",
-        "Apple faces new antitrust lawsuit in Europe.",
-        "Tim Cook hints at new AI features at WWDC.",
-        "Analyst warns of slowing growth in China for Apple.",
-    ],
-    'MSFT': [
-        "Microsoft acquires major gaming studio for $20B.",
-        "Microsoft to lay off 1,000 employees in restructuring plan.",
-        "New Azure cloud services announced at Ignite conference.",
-    ],
-    'GOOG': [
-        "Google's parent company Alphabet posts strong quarterly earnings.",
-        "Google invests $500M in new data centers.",
-        "Regulatory scrutiny over Google's ad business intensifies.",
-    ],
-}
 
 def fetch_news_headlines(company_name):
-    """
-    Mocks fetching real-time news headlines for a company.
-    In a real-world scenario, you'd use a real news API here.
-    """
-    logging.info(f"Mocking fetch for unstructured data for {company_name}...")
-    return MOCK_NEWS_HEADLINES.get(company_name, [])
+    """Fetches real-time news headlines using a News API."""
+    if not NEWS_API_KEY:
+        logging.error("NEWS_API_KEY not set in .env file.")
+        return []
+
+    logging.info(f"Fetching unstructured data for {company_name}...")
+    try:
+        url = f"https://newsapi.org/v2/everything?q={company_name}&apiKey={NEWS_API_KEY}&language=en&pageSize=10"
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        headlines = [article['title'] for article in data.get('articles', [])]
+        return headlines
+    except Exception as e:
+        logging.error(f"Error fetching news for {company_name}: {e}")
+        return []
+
 
 def process_headlines(headlines):
-    """Extracts entities and sentiment from news headlines."""
+    """Extracts entities and sentiment from news headlines using VADER."""
     processed_events = []
     for title in headlines:
         doc = nlp(title)
 
-        # Simple rule-based event classification
-        sentiment = 'neutral'
-        if any(word in title.lower() for word in ['acquisition', 'invests', 'expansion', 'record-breaking', 'strong']):
+        # --- VADER SENTIMENT ANALYSIS ---
+        sentiment_scores = analyzer.polarity_scores(title)
+        compound_score = sentiment_scores['compound']
+
+        if compound_score >= 0.05:
             sentiment = 'positive'
-        elif any(word in title.lower() for word in ['lawsuit', 'lay off', 'restructuring', 'warns', 'slowing', 'regulatory scrutiny']):
+        elif compound_score <= -0.05:
             sentiment = 'negative'
+        else:
+            sentiment = 'neutral'
 
-        # Extract company entities
-        entities = [ent.text for ent in doc.ents if ent.label_ in ['ORG', 'GPE']]
-
+        entities = [ent.text for ent in doc.ents if ent.label_ in ['ORG', 'GPE', 'PERSON']]
         processed_events.append({
             'headline': title,
             'sentiment': sentiment,
+            'sentiment_score': compound_score,  # Include the numeric score
             'entities': entities,
             'event_type': 'financial_event'
         })
